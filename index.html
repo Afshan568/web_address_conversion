@@ -1,0 +1,144 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual to Physical Address Conversion</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .input-section, .page-table-section, .conversion-section {
+            flex: 1;
+            min-width: 300px;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select, button {
+            padding: 8px;
+            margin-bottom: 15px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .error {
+            color: red;
+            margin-bottom: 15px;
+        }
+        .success {
+            color: green;
+            margin-bottom: 15px;
+        }
+        .fifo-queue {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #e9e9e9;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Virtual to Physical Address Conversion</h1>
+    
+    <div class="container">
+        <div class="input-section">
+            <h2>System Configuration</h2>
+            <label for="virtualSpace">Virtual Space Size (bytes):</label>
+            <input type="number" id="virtualSpace" min="1" value="4096">
+            
+            <label for="physicalSpace">Physical Space Size (bytes):</label>
+            <input type="number" id="physicalSpace" min="1" value="2048">
+            
+            <label for="pageSize">Page Size (bytes):</label>
+            <input type="number" id="pageSize" min="1" value="512">
+            
+            <button id="validateBtn">Validate Configuration</button>
+            <div id="configError" class="error"></div>
+            <div id="configSuccess" class="success"></div>
+            
+            <div id="autoCorrectSection" style="display: none;">
+                <p>Recommended corrections:</p>
+                <div id="recommendations"></div>
+                <button id="acceptCorrectionBtn">Accept Correction</button>
+                <button id="ignoreCorrectionBtn">Ignore Correction</button>
+            </div>
+            
+            <h2>Page Access Sequence</h2>
+            <label for="accessSequence">Access Sequence (comma-separated virtual pages):</label>
+            <input type="text" id="accessSequence" placeholder="e.g., 0,1,2,0,3">
+            <button id="simulateBtn">Simulate Accesses</button>
+        </div>
+        
+        <div class="page-table-section">
+            <h2>Page Table</h2>
+            <div id="pageTableContainer"></div>
+            
+            <h3>FIFO Replacement Queue</h3>
+            <div id="fifoQueue" class="fifo-queue"></div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="conversion-section">
+            <h2>Address Conversion</h2>
+            <label for="conversionType">Conversion Type:</label>
+            <select id="conversionType">
+                <option value="virtualToPhysical">Virtual to Physical</option>
+                <option value="physicalToVirtual">Physical to Virtual</option>
+            </select>
+            
+            <label for="inputAddress">Address (decimal):</label>
+            <input type="number" id="inputAddress" min="0" placeholder="e.g., 670">
+            
+            <button id="convertBtn">Convert Address</button>
+            <div id="conversionResult"></div>
+            <div id="conversionError" class="error"></div>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
