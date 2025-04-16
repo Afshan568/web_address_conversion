@@ -77,6 +77,9 @@
             background-color: #e9e9e9;
             border-radius: 5px;
         }
+        .hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -85,14 +88,28 @@
     <div class="container">
         <div class="input-section">
             <h2>System Configuration</h2>
-            <label for="virtualSpace">Virtual Space Size (bytes):</label>
-            <input type="number" id="virtualSpace" min="1" value="4096">
             
-            <label for="physicalSpace">Physical Space Size (bytes):</label>
-            <input type="number" id="physicalSpace" min="1" value="2048">
+            <label for="configType">Configuration Type:</label>
+            <select id="configType">
+                <option value="virtualToPhysical">Virtual to Physical</option>
+                <option value="physicalToVirtual">Physical to Virtual</option>
+            </select>
             
-            <label for="pageSize">Page Size (bytes):</label>
-            <input type="number" id="pageSize" min="1" value="512">
+            <div id="virtualConfigSection">
+                <label for="virtualSpace">Virtual Space Size (KB):</label>
+                <input type="number" id="virtualSpace" min="1" value="4">
+                
+                <label for="physicalSpace">Physical Space Size (KB):</label>
+                <input type="number" id="physicalSpace" min="1" value="2">
+            </div>
+            
+            <div id="physicalConfigSection" class="hidden">
+                <label for="physicalSpaceOnly">Physical Space Size (KB):</label>
+                <input type="number" id="physicalSpaceOnly" min="1" value="2">
+            </div>
+            
+            <label for="pageSize">Page Size (KB):</label>
+            <input type="number" id="pageSize" min="1" value="0.5">
             
             <button id="validateBtn">Validate Configuration</button>
             <div id="configError" class="error"></div>
@@ -129,8 +146,20 @@
                 <option value="physicalToVirtual">Physical to Virtual</option>
             </select>
             
-            <label for="inputAddress">Address (decimal):</label>
-            <input type="number" id="inputAddress" min="0" placeholder="e.g., 670">
+            <label for="addressFormat">Address Format:</label>
+            <select id="addressFormat">
+                <option value="binary">Binary</option>
+                <option value="hexadecimal">Hexadecimal</option>
+            </select>
+            
+            <div id="virtualAddressInput" style="display: block;">
+                <label for="inputAddressVirtual">Virtual Address:</label>
+                <input type="text" id="inputAddressVirtual" placeholder="e.g., 1010011110 or 0x29E">
+            </div>
+            <div id="physicalAddressInput" style="display: none;">
+                <label for="inputAddressPhysical">Physical Address:</label>
+                <input type="text" id="inputAddressPhysical" placeholder="e.g., 1010011110 or 0x29E">
+            </div>
             
             <button id="convertBtn">Convert Address</button>
             <div id="conversionResult"></div>
@@ -141,9 +170,10 @@
     <script>
     // System state
     let systemConfig = {
-        virtualSpace: 4096,  // bytes
-        physicalSpace: 2048, // bytes
-        pageSize: 512,       // bytes
+        virtualSpace: 4,    // KB
+        physicalSpace: 2,   // KB
+        pageSize: 0.5,      // KB
+        configType: 'virtualToPhysical',
         valid: false
     };
 
@@ -152,8 +182,12 @@
     let pageFaults = 0;
 
     // DOM elements
+    const configTypeSelect = document.getElementById('configType');
+    const virtualConfigSection = document.getElementById('virtualConfigSection');
+    const physicalConfigSection = document.getElementById('physicalConfigSection');
     const virtualSpaceInput = document.getElementById('virtualSpace');
     const physicalSpaceInput = document.getElementById('physicalSpace');
+    const physicalSpaceOnlyInput = document.getElementById('physicalSpaceOnly');
     const pageSizeInput = document.getElementById('pageSize');
     const validateBtn = document.getElementById('validateBtn');
     const configError = document.getElementById('configError');
@@ -167,44 +201,84 @@
     const pageTableContainer = document.getElementById('pageTableContainer');
     const fifoQueueDiv = document.getElementById('fifoQueue');
     const conversionTypeSelect = document.getElementById('conversionType');
-    const inputAddress = document.getElementById('inputAddress');
+    const addressFormatSelect = document.getElementById('addressFormat');
+    const virtualAddressInputDiv = document.getElementById('virtualAddressInput');
+    const physicalAddressInputDiv = document.getElementById('physicalAddressInput');
+    const inputAddressVirtual = document.getElementById('inputAddressVirtual');
+    const inputAddressPhysical = document.getElementById('inputAddressPhysical');
     const convertBtn = document.getElementById('convertBtn');
     const conversionResult = document.getElementById('conversionResult');
     const conversionError = document.getElementById('conversionError');
 
     // Initialize
     document.addEventListener('DOMContentLoaded', () => {
-        console.log('DOMContentLoaded fired');
-        validateBtn.addEventListener('click', () => {
-            console.log('Validate button clicked');
-            validateConfiguration();
-        });
+        configTypeSelect.addEventListener('change', toggleConfigType);
+        validateBtn.addEventListener('click', validateConfiguration);
         acceptCorrectionBtn.addEventListener('click', acceptCorrection);
         ignoreCorrectionBtn.addEventListener('click', ignoreCorrection);
         simulateBtn.addEventListener('click', simulateAccesses);
         convertBtn.addEventListener('click', performConversion);
+        conversionTypeSelect.addEventListener('change', toggleAddressInput);
+        addressFormatSelect.addEventListener('change', clearConversionResults);
         
-        // Initialize page table
+        toggleConfigType();
         validateConfiguration();
+        toggleAddressInput();
     });
 
+    function toggleConfigType() {
+        systemConfig.configType = configTypeSelect.value;
+        
+        if (systemConfig.configType === 'virtualToPhysical') {
+            virtualConfigSection.classList.remove('hidden');
+            physicalConfigSection.classList.add('hidden');
+        } else {
+            virtualConfigSection.classList.add('hidden');
+            physicalConfigSection.classList.remove('hidden');
+        }
+        
+        clearConversionResults();
+    }
+
+    function clearConversionResults() {
+        conversionResult.textContent = '';
+        conversionError.textContent = '';
+    }
+
+    function toggleAddressInput() {
+        const conversionType = conversionTypeSelect.value;
+        if (conversionType === 'virtualToPhysical') {
+            virtualAddressInputDiv.style.display = 'block';
+            physicalAddressInputDiv.style.display = 'none';
+        } else {
+            virtualAddressInputDiv.style.display = 'none';
+            physicalAddressInputDiv.style.display = 'block';
+        }
+    }
+
     function validateConfiguration() {
-        console.log('validateConfiguration called');
         configError.textContent = '';
         configSuccess.textContent = '';
         autoCorrectSection.style.display = 'none';
         
-        const virtualSpace = parseInt(virtualSpaceInput.value);
-        const physicalSpace = parseInt(physicalSpaceInput.value);
-        const pageSize = parseInt(pageSizeInput.value);
+        const configType = configTypeSelect.value;
+        const pageSize = parseFloat(pageSizeInput.value);
         
-        console.log('Inputs:', { virtualSpace, physicalSpace, pageSize });
+        let virtualSpace, physicalSpace;
+        
+        if (configType === 'virtualToPhysical') {
+            virtualSpace = parseFloat(virtualSpaceInput.value);
+            physicalSpace = parseFloat(physicalSpaceInput.value);
+        } else {
+            virtualSpace = null;
+            physicalSpace = parseFloat(physicalSpaceOnlyInput.value);
+        }
         
         let errors = [];
         let recommendations = [];
         
         // Basic checks
-        if (!virtualSpace || virtualSpace <= 0) {
+        if (configType === 'virtualToPhysical' && (!virtualSpace || virtualSpace <= 0)) {
             errors.push('Virtual space must be positive.');
         }
         if (!physicalSpace || physicalSpace <= 0) {
@@ -214,23 +288,21 @@
             errors.push('Page size must be positive.');
         }
         
-        // Check physical space ratio
-        if (virtualSpace && physicalSpace && physicalSpace !== virtualSpace / 2) {
-            errors.push(`Physical space should be half of virtual space (${virtualSpace / 2} bytes).`);
-            recommendations.push(`Set physical space to ${virtualSpace / 2} bytes.`);
+        // Check physical space ratio for virtual to physical
+        if (configType === 'virtualToPhysical' && virtualSpace && physicalSpace && physicalSpace !== virtualSpace / 2) {
+            errors.push(`Physical space should be half of virtual space (${virtualSpace / 2} KB).`);
+            recommendations.push(`Set physical space to ${virtualSpace / 2} KB.`);
         }
         
         // Check divisibility
-        if (virtualSpace && pageSize && virtualSpace % pageSize !== 0) {
-            errors.push(`Virtual space (${virtualSpace} bytes) must be divisible by page size (${pageSize} bytes).`);
+        if (configType === 'virtualToPhysical' && virtualSpace && pageSize && virtualSpace % pageSize !== 0) {
+            errors.push(`Virtual space (${virtualSpace} KB) must be divisible by page size (${pageSize} KB).`);
             recommendations.push(`Set page size to a divisor of ${virtualSpace} (e.g., ${findDivisor(virtualSpace)}).`);
         }
         if (physicalSpace && pageSize && physicalSpace % pageSize !== 0) {
-            errors.push(`Physical space (${physicalSpace} bytes) must be divisible by page size (${pageSize} bytes).`);
+            errors.push(`Physical space (${physicalSpace} KB) must be divisible by page size (${pageSize} KB).`);
             recommendations.push(`Set page size to a divisor of ${physicalSpace} (e.g., ${findDivisor(physicalSpace)}).`);
         }
-        
-        console.log('Validation results:', { errors, recommendations });
         
         if (errors.length > 0) {
             configError.innerHTML = errors.join('<br>');
@@ -241,9 +313,10 @@
         } else {
             configSuccess.textContent = 'Configuration is valid!';
             systemConfig = {
-                virtualSpace,
-                physicalSpace,
-                pageSize,
+                virtualSpace: configType === 'virtualToPhysical' ? virtualSpace : null,
+                physicalSpace: physicalSpace,
+                pageSize: pageSize,
+                configType: configType,
                 valid: true
             };
             initializePageTable();
@@ -252,22 +325,31 @@
     }
 
     function acceptCorrection() {
-        console.log('acceptCorrection called');
-        const virtualSpace = parseInt(virtualSpaceInput.value);
-        const pageSize = parseInt(pageSizeInput.value);
+        const configType = configTypeSelect.value;
+        const pageSize = parseFloat(pageSizeInput.value);
         
-        // Set physical space to half of virtual space
-        if (virtualSpace) {
-            physicalSpaceInput.value = virtualSpace / 2;
-        }
-        
-        // Find a valid page size that divides both
-        if (virtualSpace && physicalSpaceInput.value) {
-            let newPageSize = pageSize;
-            while (newPageSize > 1 && (virtualSpace % newPageSize !== 0 || physicalSpaceInput.value % newPageSize !== 0)) {
-                newPageSize = findDivisor(Math.min(virtualSpace, physicalSpaceInput.value));
+        if (configType === 'virtualToPhysical') {
+            const virtualSpace = parseFloat(virtualSpaceInput.value);
+            if (virtualSpace) {
+                physicalSpaceInput.value = virtualSpace / 2;
             }
-            pageSizeInput.value = newPageSize;
+            
+            if (virtualSpace && physicalSpaceInput.value) {
+                let newPageSize = pageSize;
+                while (newPageSize > 1 && (virtualSpace % newPageSize !== 0 || physicalSpaceInput.value % newPageSize !== 0)) {
+                    newPageSize = findDivisor(Math.min(virtualSpace, physicalSpaceInput.value));
+                }
+                pageSizeInput.value = newPageSize;
+            }
+        } else {
+            const physicalSpace = parseFloat(physicalSpaceOnlyInput.value);
+            if (physicalSpace) {
+                let newPageSize = pageSize;
+                while (newPageSize > 1 && physicalSpace % newPageSize !== 0) {
+                    newPageSize = findDivisor(physicalSpace);
+                }
+                pageSizeInput.value = newPageSize;
+            }
         }
         
         autoCorrectSection.style.display = 'none';
@@ -275,12 +357,14 @@
     }
 
     function ignoreCorrection() {
-        console.log('ignoreCorrection called');
         autoCorrectSection.style.display = 'none';
+        const configType = configTypeSelect.value;
+        
         systemConfig = {
-            virtualSpace: parseInt(virtualSpaceInput.value),
-            physicalSpace: parseInt(physicalSpaceInput.value),
-            pageSize: parseInt(pageSizeInput.value),
+            virtualSpace: configType === 'virtualToPhysical' ? parseFloat(virtualSpaceInput.value) : null,
+            physicalSpace: configType === 'virtualToPhysical' ? parseFloat(physicalSpaceInput.value) : parseFloat(physicalSpaceOnlyInput.value),
+            pageSize: parseFloat(pageSizeInput.value),
+            configType: configType,
             valid: true
         };
         configSuccess.textContent = 'Configuration accepted.';
@@ -289,8 +373,15 @@
     }
 
     function initializePageTable() {
-        console.log('initializePageTable called');
-        const virtualPages = systemConfig.virtualSpace / systemConfig.pageSize;
+        let virtualPages;
+        
+        if (systemConfig.configType === 'virtualToPhysical') {
+            virtualPages = systemConfig.virtualSpace / systemConfig.pageSize;
+        } else {
+            // For physical to virtual, we'll assume virtual space is twice physical space
+            virtualPages = (systemConfig.physicalSpace * 2) / systemConfig.pageSize;
+        }
+        
         pageTable = [];
         fifoQueue = [];
         pageFaults = 0;
@@ -305,14 +396,21 @@
     }
 
     function updatePageTable() {
-        console.log('updatePageTable called');
         if (!systemConfig.valid) {
             pageTableContainer.innerHTML = '<p>Please configure a valid system first.</p>';
             return;
         }
         
-        const virtualPages = systemConfig.virtualSpace / systemConfig.pageSize;
-        const physicalPages = systemConfig.physicalSpace / systemConfig.pageSize;
+        let virtualPages, physicalPages;
+        
+        if (systemConfig.configType === 'virtualToPhysical') {
+            virtualPages = systemConfig.virtualSpace / systemConfig.pageSize;
+            physicalPages = systemConfig.physicalSpace / systemConfig.pageSize;
+        } else {
+            // For physical to virtual, assume virtual space is twice physical space
+            virtualPages = (systemConfig.physicalSpace * 2) / systemConfig.pageSize;
+            physicalPages = systemConfig.physicalSpace / systemConfig.pageSize;
+        }
         
         let html = `
             <p>Virtual Pages: ${virtualPages}, Physical Pages: ${physicalPages}</p>
@@ -330,8 +428,8 @@
         for (const entry of pageTable) {
             html += `
                 <tr>
-                    <td>${entry.virtualIndex}</td>
-                    <td>${entry.physicalIndex !== null ? entry.physicalIndex : 'None'}</td>
+                    <td>${decimalToBinary(entry.virtualIndex)}</td>
+                    <td>${entry.physicalIndex !== null ? decimalToBinary(entry.physicalIndex) : 'None'}</td>
                     <td>${entry.present ? 'Yes' : 'No'}</td>
                 </tr>
             `;
@@ -344,22 +442,23 @@
     }
 
     function updateFifoQueueDisplay() {
-        console.log('updateFifoQueueDisplay called');
+        const binaryQueue = fifoQueue.map(v => decimalToBinary(v));
         fifoQueueDiv.innerHTML = `
             <p>Page Faults: ${pageFaults}</p>
-            <p>FIFO Queue: [${fifoQueue.join(', ')}]</p>
+            <p>FIFO Queue: [${binaryQueue.join(', ')}]</p>
         `;
     }
 
     function simulateAccesses() {
-        console.log('simulateAccesses called');
         if (!systemConfig.valid) {
             configError.textContent = 'Please configure a valid system first.';
             return;
         }
         
         const sequence = accessSequenceInput.value.split(',').map(x => parseInt(x.trim())).filter(x => !isNaN(x));
-        const virtualPages = systemConfig.virtualSpace / systemConfig.pageSize;
+        const virtualPages = systemConfig.configType === 'virtualToPhysical' ? 
+                           (systemConfig.virtualSpace / systemConfig.pageSize) : 
+                           ((systemConfig.physicalSpace * 2) / systemConfig.pageSize);
         
         for (const vp of sequence) {
             if (vp < 0 || vp >= virtualPages) {
@@ -371,7 +470,6 @@
             if (!pageEntry.present) {
                 handlePageFault(pageEntry);
             } else {
-                // Move to end of FIFO queue to reflect recent access
                 fifoQueue = fifoQueue.filter(x => x !== vp);
                 fifoQueue.push(vp);
             }
@@ -382,16 +480,13 @@
     }
 
     function handlePageFault(pageEntry) {
-        console.log('handlePageFault called for page', pageEntry.virtualIndex);
         const physicalPages = systemConfig.physicalSpace / systemConfig.pageSize;
         let physicalIndex;
         
-        // Check for free physical page
         const freePhysicalPage = findFreePhysicalPage();
         if (freePhysicalPage !== null) {
             physicalIndex = freePhysicalPage;
         } else {
-            // Replace using FIFO
             const victimVirtualIndex = fifoQueue.shift();
             const victimEntry = pageTable[victimVirtualIndex];
             physicalIndex = victimEntry.physicalIndex;
@@ -406,7 +501,6 @@
     }
 
     function findFreePhysicalPage() {
-        console.log('findFreePhysicalPage called');
         const physicalPages = systemConfig.physicalSpace / systemConfig.pageSize;
         const usedPhysicalPages = new Set(pageTable.filter(entry => entry.present).map(entry => entry.physicalIndex));
         
@@ -419,7 +513,6 @@
     }
 
     function performConversion() {
-        console.log('performConversion called');
         conversionResult.textContent = '';
         conversionError.textContent = '';
         
@@ -428,70 +521,124 @@
             return;
         }
         
-        let addressValue = parseInt(inputAddress.value);
-        if (isNaN(addressValue) || addressValue < 0) {
-            conversionError.textContent = 'Invalid address.';
+        const conversionType = conversionTypeSelect.value;
+        const addressFormat = addressFormatSelect.value;
+        const addressType = conversionType === 'virtualToPhysical' ? 'Virtual' : 'Physical';
+        const addressInput = conversionType === 'virtualToPhysical' ? 
+                            inputAddressVirtual.value.trim() : 
+                            inputAddressPhysical.value.trim();
+        
+        if (!addressInput) {
+            conversionError.textContent = `Invalid! Because ${addressType} address not available`;
             return;
         }
         
-        const conversionType = conversionTypeSelect.value;
-        const virtualPages = systemConfig.virtualSpace / systemConfig.pageSize;
-        const physicalPages = systemConfig.physicalSpace / systemConfig.pageSize;
+        let addressValue;
+        try {
+            if (addressFormat === 'binary') {
+                if (!/^[01]+$/.test(addressInput)) {
+                    throw new Error(`Invalid ${addressType} address: Must be a binary number`);
+                }
+                addressValue = parseInt(addressInput, 2);
+            } else { // hexadecimal
+                if (!/^0x[0-9a-fA-F]+$/.test(addressInput)) {
+                    throw new Error(`Invalid ${addressType} address: Must be a hexadecimal number (e.g., 0x29E)`);
+                }
+                addressValue = parseInt(addressInput, 16);
+            }
+        } catch (e) {
+            conversionError.textContent = e.message;
+            return;
+        }
+        
+        let virtualPages, physicalPages;
+        
+        if (systemConfig.configType === 'virtualToPhysical') {
+            virtualPages = systemConfig.virtualSpace / systemConfig.pageSize;
+            physicalPages = systemConfig.physicalSpace / systemConfig.pageSize;
+        } else {
+            virtualPages = (systemConfig.physicalSpace * 2) / systemConfig.pageSize;
+            physicalPages = systemConfig.physicalSpace / systemConfig.pageSize;
+        }
         
         if (conversionType === 'virtualToPhysical') {
-            if (addressValue >= systemConfig.virtualSpace) {
-                conversionError.textContent = `Virtual address ${addressValue} exceeds virtual space (${systemConfig.virtualSpace}).`;
+            const maxVirtualAddress = systemConfig.configType === 'virtualToPhysical' ? 
+                                    systemConfig.virtualSpace * 1024 : 
+                                    (systemConfig.physicalSpace * 2) * 1024;
+            
+            if (addressValue >= maxVirtualAddress) {
+                const maxDisplay = addressFormat === 'binary' ? maxVirtualAddress.toString(2) : '0x' + maxVirtualAddress.toString(16);
+                conversionError.textContent = `Invalid Virtual address: Exceeds virtual space (${maxDisplay})`;
                 return;
             }
             
-            const virtualPageIndex = Math.floor(addressValue / systemConfig.pageSize);
-            const offset = addressValue % systemConfig.pageSize;
+            const virtualPageIndex = Math.floor(addressValue / (systemConfig.pageSize * 1024));
+            const offset = addressValue % (systemConfig.pageSize * 1024);
             const pageEntry = pageTable[virtualPageIndex];
             
             if (!pageEntry.present) {
-                conversionError.textContent = `Page fault: Virtual page ${virtualPageIndex} not in memory.`;
+                conversionError.textContent = 'Invalid! There is no physical address because present bit is 0';
                 return;
             }
             
-            const physicalAddress = (pageEntry.physicalIndex * systemConfig.pageSize) + offset;
-            conversionResult.innerHTML = `
-                <p>Virtual Address: ${addressValue}</p>
-                <p>Virtual Page: ${virtualPageIndex}, Offset: ${offset}</p>
-                <p>Physical Page: ${pageEntry.physicalIndex}</p>
-                <p>Physical Address: ${physicalAddress}</p>
+            const physicalAddress = (pageEntry.physicalIndex * systemConfig.pageSize * 1024) + offset;
+            
+            let resultText = `
+                <p>Virtual Address: ${formatAddress(addressValue, addressFormat)}</p>
+                <p>Virtual Page: ${formatAddress(virtualPageIndex, addressFormat)}, Offset: ${formatAddress(offset, addressFormat)}</p>
+                <p>Physical Page: ${formatAddress(pageEntry.physicalIndex, addressFormat)}</p>
+                <p>Physical Address: ${formatAddress(physicalAddress, addressFormat)}</p>
             `;
+            
+            conversionResult.innerHTML = resultText;
         } else {
-            if (addressValue >= systemConfig.physicalSpace) {
-                conversionError.textContent = `Physical address ${addressValue} exceeds physical space (${systemConfig.physicalSpace}).`;
+            if (addressValue >= systemConfig.physicalSpace * 1024) {
+                const maxAddr = systemConfig.physicalSpace * 1024;
+                const maxDisplay = addressFormat === 'binary' ? maxAddr.toString(2) : '0x' + maxAddr.toString(16);
+                conversionError.textContent = `Invalid Physical address: Exceeds physical space (${maxDisplay})`;
                 return;
             }
             
-            const physicalPageIndex = Math.floor(addressValue / systemConfig.pageSize);
-            const offset = addressValue % systemConfig.pageSize;
+            const physicalPageIndex = Math.floor(addressValue / (systemConfig.pageSize * 1024));
+            const offset = addressValue % (systemConfig.pageSize * 1024);
             const pageEntry = pageTable.find(entry => entry.present && entry.physicalIndex === physicalPageIndex);
             
             if (!pageEntry) {
-                conversionError.textContent = `No virtual page mapped to physical page ${physicalPageIndex}.`;
+                conversionError.textContent = 'Invalid! Because we cannot do address conversion (no virtual page mapped)';
                 return;
             }
             
-            const virtualAddress = (pageEntry.virtualIndex * systemConfig.pageSize) + offset;
-            conversionResult.innerHTML = `
-                <p>Physical Address: ${addressValue}</p>
-                <p>Physical Page: ${physicalPageIndex}, Offset: ${offset}</p>
-                <p>Virtual Page: ${pageEntry.virtualIndex}</p>
-                <p>Virtual Address: ${virtualAddress}</p>
+            const virtualAddress = (pageEntry.virtualIndex * systemConfig.pageSize * 1024) + offset;
+            
+            let resultText = `
+                <p>Physical Address: ${formatAddress(addressValue, addressFormat)}</p>
+                <p>Physical Page: ${formatAddress(physicalPageIndex, addressFormat)}, Offset: ${formatAddress(offset, addressFormat)}</p>
+                <p>Virtual Page: ${formatAddress(pageEntry.virtualIndex, addressFormat)}</p>
+                <p>Virtual Address: ${formatAddress(virtualAddress, addressFormat)}</p>
             `;
+            
+            conversionResult.innerHTML = resultText;
         }
     }
 
     // Helper functions
     function findDivisor(n) {
-        console.log('findDivisor called for', n);
         for (let i = n; i >= 1; i--) {
             if (n % i === 0) return i;
         }
         return 1;
+    }
+    
+    function decimalToBinary(n) {
+        return n.toString(2);
+    }
+    
+    function formatAddress(value, format) {
+        if (format === 'binary') {
+            return value.toString(2);
+        } else {
+            return '0x' + value.toString(16).toUpperCase();
+        }
     }
     </script>
 </body>
