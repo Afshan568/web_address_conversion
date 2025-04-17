@@ -95,12 +95,9 @@
                 <option value="physicalToVirtual">Physical to Virtual</option>
             </select>
             
-            <div id="virtualConfigSection">
+            <div id="virtualSpaceSection">
                 <label for="virtualSpace">Virtual Space Size (KB):</label>
                 <input type="number" id="virtualSpace" min="1" value="4">
-                
-                <label for="physicalSpace">Physical Space Size (KB):</label>
-                <input type="number" id="physicalSpace" min="1" value="2">
             </div>
             
             <div id="physicalConfigSection" class="hidden">
@@ -183,10 +180,9 @@
 
     // DOM elements
     const configTypeSelect = document.getElementById('configType');
-    const virtualConfigSection = document.getElementById('virtualConfigSection');
+    const virtualSpaceSection = document.getElementById('virtualSpaceSection');
     const physicalConfigSection = document.getElementById('physicalConfigSection');
     const virtualSpaceInput = document.getElementById('virtualSpace');
-    const physicalSpaceInput = document.getElementById('physicalSpace');
     const physicalSpaceOnlyInput = document.getElementById('physicalSpaceOnly');
     const pageSizeInput = document.getElementById('pageSize');
     const validateBtn = document.getElementById('validateBtn');
@@ -230,10 +226,10 @@
         systemConfig.configType = configTypeSelect.value;
         
         if (systemConfig.configType === 'virtualToPhysical') {
-            virtualConfigSection.classList.remove('hidden');
+            virtualSpaceSection.classList.remove('hidden');
             physicalConfigSection.classList.add('hidden');
         } else {
-            virtualConfigSection.classList.add('hidden');
+            virtualSpaceSection.classList.add('hidden');
             physicalConfigSection.classList.remove('hidden');
         }
         
@@ -268,7 +264,7 @@
         
         if (configType === 'virtualToPhysical') {
             virtualSpace = parseFloat(virtualSpaceInput.value);
-            physicalSpace = parseFloat(physicalSpaceInput.value);
+            physicalSpace = virtualSpace / 2; // Derive physical space
         } else {
             virtualSpace = null;
             physicalSpace = parseFloat(physicalSpaceOnlyInput.value);
@@ -286,12 +282,6 @@
         }
         if (!pageSize || pageSize <= 0) {
             errors.push('Page size must be positive.');
-        }
-        
-        // Check physical space ratio for virtual to physical
-        if (configType === 'virtualToPhysical' && virtualSpace && physicalSpace && physicalSpace !== virtualSpace / 2) {
-            errors.push(`Physical space should be half of virtual space (${virtualSpace / 2} KB).`);
-            recommendations.push(`Set physical space to ${virtualSpace / 2} KB.`);
         }
         
         // Check divisibility
@@ -330,17 +320,11 @@
         
         if (configType === 'virtualToPhysical') {
             const virtualSpace = parseFloat(virtualSpaceInput.value);
-            if (virtualSpace) {
-                physicalSpaceInput.value = virtualSpace / 2;
+            let newPageSize = pageSize;
+            while (newPageSize > 1 && (virtualSpace % newPageSize !== 0 || (virtualSpace / 2) % newPageSize !== 0)) {
+                newPageSize = findDivisor(Math.min(virtualSpace, virtualSpace / 2));
             }
-            
-            if (virtualSpace && physicalSpaceInput.value) {
-                let newPageSize = pageSize;
-                while (newPageSize > 1 && (virtualSpace % newPageSize !== 0 || physicalSpaceInput.value % newPageSize !== 0)) {
-                    newPageSize = findDivisor(Math.min(virtualSpace, physicalSpaceInput.value));
-                }
-                pageSizeInput.value = newPageSize;
-            }
+            pageSizeInput.value = newPageSize;
         } else {
             const physicalSpace = parseFloat(physicalSpaceOnlyInput.value);
             if (physicalSpace) {
@@ -362,7 +346,7 @@
         
         systemConfig = {
             virtualSpace: configType === 'virtualToPhysical' ? parseFloat(virtualSpaceInput.value) : null,
-            physicalSpace: configType === 'virtualToPhysical' ? parseFloat(physicalSpaceInput.value) : parseFloat(physicalSpaceOnlyInput.value),
+            physicalSpace: configType === 'virtualToPhysical' ? parseFloat(virtualSpaceInput.value) / 2 : parseFloat(physicalSpaceOnlyInput.value),
             pageSize: parseFloat(pageSizeInput.value),
             configType: configType,
             valid: true
@@ -378,7 +362,6 @@
         if (systemConfig.configType === 'virtualToPhysical') {
             virtualPages = systemConfig.virtualSpace / systemConfig.pageSize;
         } else {
-            // For physical to virtual, we'll assume virtual space is twice physical space
             virtualPages = (systemConfig.physicalSpace * 2) / systemConfig.pageSize;
         }
         
@@ -407,7 +390,6 @@
             virtualPages = systemConfig.virtualSpace / systemConfig.pageSize;
             physicalPages = systemConfig.physicalSpace / systemConfig.pageSize;
         } else {
-            // For physical to virtual, assume virtual space is twice physical space
             virtualPages = (systemConfig.physicalSpace * 2) / systemConfig.pageSize;
             physicalPages = systemConfig.physicalSpace / systemConfig.pageSize;
         }
